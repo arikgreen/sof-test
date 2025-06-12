@@ -1187,3 +1187,39 @@ perf_analyze()
     fi
 }
 
+# test-mic_privacy.sh needs to control mic privacy settings (on/off)
+# needs usbrelay package: https://github.com/darrylb123/usbrelay
+# param1: switch name
+# param2: switch state
+usbrelay_switch()
+{
+    local switch_name=$1
+    local state=$2
+    dlogi "Setting usbrelay switch $switch_name to $state."
+    usbrelay "$switch_name=$state" >/dev/null 2>&1 || {
+        # If usbrelay is not installed or no relays detected, skip the test
+        dloge "Failed to set usbrelay switch $switch_name to $state."
+        skip_test "usbrelay is not responding or no relays detected. Check hardware connection."
+    }
+
+    # wait for the switch to settle
+    sleep 0.5
+
+    # Display current state of the switch
+    current_state=$(usbrelay | grep "$switch_name" | awk -F= '{print $2}')
+
+    # Check if current_state is equal to the requested state
+    [[ "$current_state" == "$state" ]] || {
+        dloge "usbrelay switch $switch_name failed to set to $state (current: $current_state)"
+        exit 1
+    }
+
+    if [[ "$current_state" == "1" ]]; then
+        dlogi "Current state of $switch_name is: on"
+    elif [[ "$current_state" == "0" ]]; then
+        dlogi "Current state of $switch_name is: off"
+    else
+        dloge "Invalid state for $switch_name: $current_state"
+        exit 1
+    fi
+}
