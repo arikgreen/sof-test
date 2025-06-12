@@ -791,7 +791,7 @@ extract_format_number() {
     else
         die "Error: Unknown format: %s\n"
     fi
-}  
+}
 
 # Initialize the parameters using for audio testing.
 # shellcheck disable=SC2034
@@ -1271,4 +1271,3 @@ perf_analyze()
         return 1
     fi
 }
-
