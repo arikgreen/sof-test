@@ -94,13 +94,21 @@ __upload_wav_files()
 
 check_playback_capture()
 {
+    local expected_control_state
+    expected_control_state=$1
+
     # check if capture and playback work
     dlogc "alsabat -P$pcm_p -C$pcm_c -c 2 -r $rate"
-    alsabat -P"$pcm_p" -C"$pcm_c" -c 2 -r "$rate" || {
-        # upload failed wav file
-        __upload_wav_files
-        die "check_playback_capture() failed - check if a loopback is connected."
+    alsabat_output=$(mktemp)
+    alsabat_status=0
+    alsabat -P"$pcm_p" -C"$pcm_c" -c 2 -r "$rate" > "$alsabat_output" 2>&1 || {
+        alsabat_status=$?
     }
+
+    if [ "$alsabat_status" -ne "$expected_control_state" ]; then
+        __upload_wav_files
+        die "check_playback_capture() failed: expected alsabat status $expected_control_state, got $alsabat_status. See $alsabat_output for details."
+    fi
 }
 
 handle_alsabat_result()
@@ -131,23 +139,10 @@ handle_alsabat_result()
 
 show_control_state()
 {
-    dlogi "Current state of the mic privacy control:"
-    amixer -c 0 contents | awk '
-        /^numid=/ {
-            n=$0
-            show = tolower($0) ~ /capture/
-            found = 0
-        }
-        /type=BOOLEAN/ {
-            t = $0
-            if (show) found = 1
-        }
-        /: values=/ && found {
-            print n
-            print t
-            print $0
-            found = 0
-        }'
+    local card=$1
+
+    dlogi "Current state of the capture switch controls:"
+    amixer -c "$card" contents | awk -v name="" show_capture_controls=1 -f "${TESTLIB}/control_state.awk"
 }
 
 main()
@@ -177,29 +172,31 @@ main()
 
     logger_disabled || func_lib_start_log_collect
 
-    check_locale_for_alsabat
+    check_locale_for_alsabat 0
 
     set_alsa
 
     dlogi "Reset USB Relay - plug jack audio."
     usbrelay_switch "$relay" 0
 
-    show_control_state
-
     # wait for the switch to settle
     sleep "$relay_settle_time"
 
     # check the PCMs before mic privacy test
     dlogi "Check playback/capture before mic privacy test"
-    check_playback_capture
+    check_playback_capture 0
 
     # select the first card
+    local first_card_name
     first_card_name=$(aplay -l | awk '/^card ([0-9]+)/ {print $3; exit}')
+
+    show_control_state "$first_card_name"
+
     # dump amixer contents always.
     # good case amixer settings is for reference, bad case for debugging.
     amixer -c "${first_card_name}" contents > "$LOG_ROOT"/amixer_settings.txt
 
-    check_playback_capture
+    check_playback_capture 0
 
     dlogi "Preconditions are met, starting mic privacy test"
 
